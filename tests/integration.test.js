@@ -2,59 +2,9 @@ const request = require('supertest');
 const cheerio = require('cheerio');
 const { sampleHtmlWithYale } = require('./test-utils');
 const nock = require('nock');
-const express = require('express');
-const axios = require('axios');
 
-// Create a test version of the app
-const testApp = express();
-testApp.use(express.json());
-testApp.use(express.urlencoded({ extended: true }));
-
-// Copy the /fetch route logic from app.js
-testApp.post('/fetch', async (req, res) => {
-  try {
-    const { url } = req.body;
-
-    if (!url) {
-      return res.status(400).json({ error: 'URL is required' });
-    }
-
-    // Fetch the content from the provided URL
-    const response = await axios.get(url);
-    const html = response.data;
-
-    // Use cheerio to parse HTML and selectively replace text content, not URLs
-    const $ = cheerio.load(html);
-
-    // Process text nodes in the body
-    $('body *').contents().filter(function() {
-      return this.nodeType === 3; // Text nodes only
-    }).each(function() {
-      // Replace text content but not in URLs or attributes
-      const text = $(this).text();
-      const newText = text.replace(/Yale/g, 'Fale').replace(/yale/g, 'fale').replace(/YALE/g, 'FALE');
-      if (text !== newText) {
-        $(this).replaceWith(newText);
-      }
-    });
-
-    // Process title separately
-    const title = $('title').text().replace(/Yale/g, 'Fale').replace(/yale/g, 'fale').replace(/YALE/g, 'FALE');
-    $('title').text(title);
-
-    return res.json({
-      success: true,
-      content: $.html(),
-      title: title,
-      originalUrl: url
-    });
-  } catch (error) {
-    console.error('Error fetching URL:', error.message);
-    return res.status(500).json({
-      error: `Failed to fetch content: ${error.message}`
-    });
-  }
-});
+// Import the actual app
+const app = require('../app');
 
 describe('Integration Tests', () => {
   beforeAll(() => {
@@ -80,7 +30,7 @@ describe('Integration Tests', () => {
       .get('/')
       .reply(200, sampleHtmlWithYale);
 
-    const response = await request(testApp)
+    const response = await request(app)
       .post('/fetch')
       .send({ url: 'https://example.com/' });
 
@@ -114,7 +64,7 @@ describe('Integration Tests', () => {
       .get('/')
       .replyWithError('getaddrinfo ENOTFOUND error-site.com');
 
-    const response = await request(testApp)
+    const response = await request(app)
       .post('/fetch')
       .send({ url: 'https://error-site.com/' });
 
@@ -123,7 +73,7 @@ describe('Integration Tests', () => {
   });
 
   test('Should handle missing URL parameter', async () => {
-    const response = await request(testApp)
+    const response = await request(app)
       .post('/fetch')
       .send({});
 
